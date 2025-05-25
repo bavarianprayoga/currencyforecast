@@ -1,0 +1,7 @@
+lightgbm==4.6.0
+numpy==2.2.6
+pandas==2.2.3
+plotly==6.0.1
+Requests==2.32.3
+scikit_learn==1.6.1
+streamlit==1.45.1
