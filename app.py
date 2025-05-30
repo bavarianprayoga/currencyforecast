@@ -36,18 +36,15 @@ def format_value(num):
         return f"{num/1e6:.2f}M"
     elif abs_num >= 1e3:
         return f"{num/1e3:.2f}K"
-    elif abs_num >= 0.01: # For typical currency values or slightly smaller
-        # Show 2 to 4 decimal places depending on magnitude if it's not an integer
+    elif abs_num >= 0.01: # Show 2 to 4 decimal places depending on magnitude if it's not an integer
         if abs_num >= 1:
             return f"{num:.2f}"
-        else: # e.g. 0.50, 0.0123
+        else: # 0.50, 0.0123
             return f"{num:.4f}"
     elif abs_num < 1e-9 and abs_num > 0: # Extremely small, switch to scientific to avoid too many zeros
         return f"{num:.2e}"
-    else: # For very small numbers like 0.00006, show more precision
-        # This will show up to 8 decimal places for small numbers
-        # e.g. 0.00006250 or 0.0010
-        return f"{num:.8f}".rstrip('0').rstrip('.') # Show up to 8, strip trailing 0s and then dot if it's like X.00000000
+    else: # For very small numbers like 0.00006, this will show up to 8 decimal places for small numbers
+        return f"{num:.8f}".rstrip('0').rstrip('.')
 
 @st.cache_data(ttl=3600)
 def get_currency_list():
@@ -55,6 +52,8 @@ def get_currency_list():
     try:
         # Fetch currency list and names
         fetcher = DataFetcher()
+
+        # CDN URL
         response = requests.get("https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies.min.json")
         if response.status_code == 200:
             currencies = response.json()
@@ -94,24 +93,22 @@ def create_forecast_plot(historical_data, forecast_data, base_currency, target_c
         line=dict(color='aqua', width=2)
     ))
     
-    # Calculate historical daily percentage change volatility
-    # This represents the typical one-day percentage fluctuation.
+    # Calculate historical daily percentage change volatility, represents the typical one-day percentage fluctuation.
     daily_pct_change_volatility = historical_data['rate'].pct_change().std()
     
-    # If daily_pct_change_volatility is NaN (e.g., if historical data is too short or constant),
-    # use a small default to avoid errors, or handle as appropriate.
+    # If daily_pct_change_volatility is NaN (if historical data is too short or constant),
+    # use a small default to avoid errors.
     if pd.isna(daily_pct_change_volatility):
-        daily_pct_change_volatility = 0.001 # Default to 0.1% volatility if not calculable
+        daily_pct_change_volatility = 0.001 # Default to 0.1% volatility
         logger.warning("Could not calculate historical volatility for CI, using a small default.")
 
     # Project this daily volatility into the future.
-    # The standard deviation of a sum of N independent random variables (or a random walk)
-    # scales with sqrt(N). We apply this to the percentage change.
+    # The standard deviation of a sum of N independent random variables scales with sqrt(N). Apply this to the percentage change.
     # np.arange starts from 1 up to len(forecast_data).
     forecast_horizon_steps = np.arange(1, len(forecast_data) + 1)
     projected_pct_std_dev = daily_pct_change_volatility * np.sqrt(forecast_horizon_steps)
     
-    # Forecast line - plot this first so bounds can be filled 'tonexty' or 'tonextx' relative to it
+    # Forecast line
     fig.add_trace(go.Scatter(
         x=forecast_data.index,
         y=forecast_data['forecast'],
@@ -120,12 +117,11 @@ def create_forecast_plot(historical_data, forecast_data, base_currency, target_c
     ))
     
     # Calculate Upper and Lower bounds based on the forecast and projected percentage standard deviation
-    # The confidence interval is approximately Forecast +/- 2 * (Forecast * Projected_Std_Dev_for_that_step)
     # This means the absolute size of the interval grows with the forecast value.
     upper_bound = forecast_data['forecast'] * (1 + 2 * projected_pct_std_dev)
     lower_bound = forecast_data['forecast'] * (1 - 2 * projected_pct_std_dev)
     
-    # Ensure lower bound doesn't go below zero for exchange rates (or a very small positive number)
+    # Ensure lower bound doesn't go below zero for exchange rates
     lower_bound = np.maximum(lower_bound, 0.00001) 
 
     # Add confidence intervals (shaded area)
@@ -134,8 +130,8 @@ def create_forecast_plot(historical_data, forecast_data, base_currency, target_c
         y=upper_bound,
         name='Upper Bound (95% CI)',
         line=dict(color='maroon', width=1, dash='dash'),
-        showlegend=False, # Typically hide individual bound lines if area is shaded
-        opacity=0.3 # Ensure this is for the line itself if fill is separate
+        showlegend=False,
+        opacity=0.3
     ))
     
     fig.add_trace(go.Scatter(
@@ -144,8 +140,8 @@ def create_forecast_plot(historical_data, forecast_data, base_currency, target_c
         name='Lower Bound (95% CI)',
         line=dict(color='maroon', width=1, dash='dash'),
         fill='tonexty', # Fill the area between this trace and the previous one (upper_bound)
-        showlegend=False, # Typically hide individual bound lines if area is shaded
-        opacity=0.3 # Opacity for the fill
+        showlegend=False,
+        opacity=0.3
     ))
     
     # Layout
@@ -169,7 +165,7 @@ def main():
         # Get currency list
         currencies = get_currency_list()
         if not currencies:
-            st.error("Failed to fetch currency list. Please try again later.")
+            st.error("Failed to fetch currency list.")
             return
             
         # Currency selection in main panel
@@ -179,28 +175,28 @@ def main():
                 'Base Currency',
                 options=sorted(currencies.keys()),
                 format_func=lambda x: currencies[x],
-                index=list(currencies.keys()).index('usd') if 'usd' in currencies else 0
+                index=list(currencies.keys()).index('usd') if 'usd' in currencies else 0 # default to USD
             ).lower()
-            
+
         with col2:
             target_currency = st.selectbox(
                 'Target Currency',
                 options=[c for c in sorted(currencies.keys()) if c != base_currency],
                 format_func=lambda x: currencies[x],
-                index=0
+                index=list(currencies.keys()).index('idr') if 'idr' in currencies else 1 # default to IDR
             ).lower()
         
         # Settings sidebar
         st.sidebar.title('⚙️ Settings')
         
-        # Option to use yesterday's data (useful around midnight)
+        # Option to use yesterday's data (to make the app directly uses yesterday's data and won't even try to use today's data)
         use_yesterday_data = st.sidebar.checkbox(
             'Use yesterday\'s data', 
             value=False,
-            help='Use this if API hasn\'t updated yet (around midnight)'
+            help='Use this if API hasn\'t updated yet'
         )
         
-        # Historical data range with text input and warning
+        # Historical data range
         days = st.sidebar.number_input(
             'Historical Data Range (days)',
             min_value=14,
@@ -223,17 +219,16 @@ def main():
                 # Fetch historical data
                 fetcher = DataFetcher()
                 historical_rates_collected = []
-                dates_collected = [] # Use a different name to avoid conflict with 'dates' for DataFrame index
+                dates_collected = []
 
                 progress_bar = st.progress(0)
 
-                # Determine the end date for the historical period
-                # This is the most recent date we want to include in our historical data
+                # Determine the end date for the historical period, the most recent date
                 end_date_dt = datetime.now()
                 if use_yesterday_data:
                     end_date_dt = datetime.now() - timedelta(days=1)
 
-                for i in range(days): # Loop 'days' times to get 'days' number of data points
+                for i in range(days):
                     progress = (i + 1) / days
                     progress_bar.progress(progress)
 
@@ -263,8 +258,7 @@ def main():
                     st.error("Failed to fetch sufficient historical data. Please check logs or try different parameters.", icon="❌")
                     return
 
-                # Create DataFrame from successfully fetched rates and their corresponding dates
-                # Ensure data is sorted by date, as fetching order might not be strictly chronological if some dates had no data
+                # Create DataFrame from successfully fetched rates and their corresponding dates and ensure data is sorted by date
                 historical_data = pd.DataFrame(
                     {'rate': historical_rates_collected},
                     index=pd.to_datetime(dates_collected)
@@ -287,7 +281,6 @@ def main():
                         st.warning(f"The most recent data obtained is from {latest_date_in_data.strftime('%Y-%m-%d')}, which is older than yesterday. Check data source or API status.", icon="⚠️")
                 elif use_yesterday_data and latest_date_in_data.date() < yesterday_dt.date():
                     st.warning(f"Expected yesterday's data, but the most recent obtained is from {latest_date_in_data.strftime('%Y-%m-%d')}. Check data source or API status.", icon="⚠️")
-
 
                 # Train model and generate forecast
                 forecaster = CurrencyForecaster()
@@ -336,7 +329,7 @@ def main():
                 )
                 
                 # Calculate percentage changes based on the original forecast direction
-                # The meaning of pct_change (e.g., base appreciating/depreciating) remains the same.
+                # The meaning of pct_change remains the same.
                 pct_changes = (forecast - current_rate) / current_rate * 100
                 
                 # Display forecasts with context
@@ -362,9 +355,7 @@ def main():
                 
                 # Plot
                 st.subheader('📊 Forecast Visualization')
-                # The plot itself will still use original data and orientation (base/target)
-                # But we can adjust titles if needed, or users can infer from the inverted metrics.
-                # For now, plot title remains consistent with the actual modelled pair.
+
                 fig = create_forecast_plot(
                     historical_data, # Original orientation
                     forecast_data,   # Original orientation
@@ -374,9 +365,6 @@ def main():
                 st.plotly_chart(fig, use_container_width=True)
                 
                 # Add summary statistics
-                # These statistics are on the original modelled data.
-                # If we inverted for display, we might need to clarify or also invert these.
-                # For now, keeping them based on original model scale.
                 with st.expander("📊 Additional Statistics"):
                     col1, col2 = st.columns(2)
                     with col1:
