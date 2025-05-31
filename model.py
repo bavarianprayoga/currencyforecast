@@ -24,8 +24,8 @@ class CurrencyForecaster:
         
     def _create_cyclic_features(self, df):
         """Create cyclic features for time variables"""
-        # Day of week: map to [0, 2π]
-        day_rad = 2 * np.pi * df.index.dayofweek / 7
+        # Preserves cyclic nature of days of week, no misleading ordinal values (doesn't think that sunday [6] is larger than monday [0])
+        day_rad = 2 * np.pi * df.index.dayofweek / 7 # convert days [0-6] to radians [0-2π] or [0-6/7]
         return pd.DataFrame({
             'day_sin': np.sin(day_rad),
             'day_cos': np.cos(day_rad)
@@ -35,21 +35,24 @@ class CurrencyForecaster:
         """Create simple, robust features using percentage changes"""
         try:
             logger.info("Creating technical features...")
-            features = pd.DataFrame(index=df.index)
+            features = pd.DataFrame(index=df.index) # same index as df for alignment
             
             # Percentage changes instead of absolute values
+            # exchange rates are stationary (statistical properties like mean and variance are changing over time) while pct_change is not, and it's better for time series model
             features['pct_change'] = df['rate'].pct_change()
             
-            # Simple moving averages of percentage changes
+            # Moving averages of percentage changes
+            # Moving averages smooth out short-term fluctuations and can help identify underlying trends or momentum in the percentage changes
             for window in [3, 7, 14]:
                 features[f'ma_{window}d'] = df['rate'].pct_change().rolling(
                     window=window, 
-                    min_periods=1
+                    min_periods=1 # ensure at least 1 period is used for the calculation
                 ).mean()
                 
             # Add volatility features using the class attribute for lookback period
+            # Captures how much the daily percentage changes have been fluctuating over the recent volatility_lookback period
             features['volatility'] = features['pct_change'].rolling(
-                window=self.volatility_lookback,
+                window=self.volatility_lookback, # default to 30 days
                 min_periods=1
             ).std()
             
@@ -76,7 +79,6 @@ class CurrencyForecaster:
             features = self._create_features(df)
             
             # Prepare target (next day's percentage change)
-            # Ensure target aligns with features after potential NA rows from feature creation are handled.
             target = df['rate'].pct_change().shift(-1)
 
             # Align features and target: drop rows where target is NaN (last row)
@@ -86,10 +88,7 @@ class CurrencyForecaster:
             # Concatenate features and target to handle NA dropping consistently
             combined = pd.concat([features, target.rename('target')], axis=1)
             combined = combined.dropna(subset=['target']) # Drop rows where target is NaN (last row of original data)
-            # Further drop rows if features resulted in NaNs at the beginning
-            # (though ffill().bfill() in _create_features should have handled most internal NaNs in features)
-            combined = combined.dropna(subset=features.columns)
-
+            combined = combined.dropna(subset=features.columns) # Drop rows where features are NaN (due to rolling windows), this should be handled by ffill().bfill() in _create_features
 
             if combined.empty:
                 logger.error("No data available for training after NA handling. Check input data and feature creation.")
@@ -102,7 +101,6 @@ class CurrencyForecaster:
             if len(X) < 10: # Arbitrary small number, ensure enough data for CV
                 logger.warning(f"Very few samples ({len(X)}) available for training. Model may not be reliable.")
                 # Fallback to simple model fitting if too few samples for CV
-                # This is similar to the old method but ensures it runs.
                 if not X.empty:
                     self.model = LGBMRegressor(
                         n_estimators=100,
@@ -120,8 +118,7 @@ class CurrencyForecaster:
                 else:
                     raise ValueError("Training data is empty even for fallback.")
 
-
-            # --- Old simple train-test split and model fitting (commented out) ---
+            # Old simple train-test split and model fitting
             # features = features[:-1]
             # target = target[:-1]
             # train_size = int(len(features) * 0.8)
@@ -138,34 +135,28 @@ class CurrencyForecaster:
             #     random_state=42
             # )
             # self.model.fit(X_train, y_train)
-            # --- End of old method ---
 
             # Configure TimeSeriesSplit
-            # n_splits chosen to be 3 for faster execution in a project context. 5 is also common.
+            # n_splits chosen to be 3 for faster execution
             tscv = TimeSeriesSplit(n_splits=3)
 
             # Define the parameter grid for GridSearchCV
             # Keeping the grid small for manageable computation time.
             param_grid = {
-                'n_estimators': [50, 100],         # Number of boosting rounds
-                'learning_rate': [0.05, 0.1],     # Step size shrinkage
-                'max_depth': [3, 4],                # Max depth of individual trees
-                # num_leaves is often 2^max_depth or slightly less. We'll fix it or use a small range.
-                # For simplicity, other params from your original model are used as fixed values.
+                'n_estimators': [50, 100], # Number of boosting rounds
+                'learning_rate': [0.05, 0.1], # Step size shrinkage
+                'max_depth': [3, 4], # Max depth of individual trees, num_leaves is often 2^max_depth or slightly less.
             }
 
-            # Initialize LightGBM with other fixed parameters
-            # Note: 'num_leaves' could also be in param_grid.
-            # If max_depth is small, num_leaves is also constrained.
-            # Default num_leaves for LGBM is 31. Let's use a common value.
+            # Initialize LightGBM
+            # Default num_leaves for LGBM is 31.
             lgbm = LGBMRegressor(
-                num_leaves=15, # Max leaves for base learners
+                num_leaves=15,
                 min_child_samples=3,
                 colsample_bytree=0.8,
                 subsample=0.8,
                 random_state=42,
-                # Muting LightGBM verbosity during grid search; remove if you want to see it
-                verbose=-1, 
+                verbose=-1, # Muting LightGBM verbosity during grid search
                 n_jobs=-1 # Use all available cores
             )
 
@@ -176,7 +167,7 @@ class CurrencyForecaster:
                 param_grid=param_grid,
                 scoring='neg_mean_squared_error',
                 cv=tscv,
-                verbose=1 # Set to 0 for less output, 1 or 2 for more
+                verbose=1 # 0 for less output, 1 or 2 for more
             )
 
             # Fit GridSearchCV
@@ -190,7 +181,7 @@ class CurrencyForecaster:
             logger.info("Model fitting completed.")
             return self
             
-        except ValueError as ve: # Catch specific errors we raise
+        except ValueError as ve:
             logger.error(f"ValueError during model fitting: {str(ve)}")
             raise
         except Exception as e:
@@ -205,19 +196,16 @@ class CurrencyForecaster:
                 
             logger.info(f"Generating {forecast_days}-day forecast...")
             
-            # Create features
-            # features = self._create_features(df) # Original features for the input df
-            
             # Make recursive predictions
             predictions = []
-            last_rate = df['rate'].iloc[-1]
-            # last_data starts as a copy of the original historical data
+            last_rate = df['rate'].iloc[-1] # last_data starts as a copy of the original historical data
             current_data_for_prediction = df.copy() 
             
+            # Instead of recalculating features on the entire growing dataset each time
             # Determine the minimum number of rows needed for _create_features to correctly calculate features for the last row.
             # This depends on the largest window size used in feature creation (self.volatility_lookback)
             # plus a small buffer for pct_change and safety.
-            min_rows_for_features = self.volatility_lookback + 5 # Buffer of 5 for safety and pct_change
+            min_rows_for_features = self.volatility_lookback + 5 # Buffer
 
             for i in range(forecast_days):
                 # Prepare the input data for _create_features for the next prediction step.
@@ -233,20 +221,8 @@ class CurrencyForecaster:
                 # Ensure next_day_features_df is not empty and contains the required feature columns
                 if next_day_features_df.empty or not all(col in next_day_features_df.columns for col in self.feature_columns):
                     logger.error("Feature creation for prediction loop resulted in empty or incomplete DataFrame.")
-                    # Fallback or error handling: e.g., append NaN or last prediction, or raise error
-                    # For now, let's append NaN and log error, this might break plotting if not handled there.
-                    predictions.append(np.nan) 
-                    # To continue with the last known rate or a zero change prediction:
-                    # next_rate = last_rate 
-                    # predictions.append(next_rate)
-                    # Or simply break / raise an error depending on desired robustness for this edge case.
-                    logger.warning(f"Appending NaN for prediction step {i+1} due to feature creation error.")
-                    # Update last_rate and current_data_for_prediction to allow loop to continue if possible
-                    # This part depends on how one wants to handle such errors.
-                    # For simplicity, if we append NaN, we can't easily compute the next 'last_rate'.
-                    # Let's assume for now that if features fail, we might have to stop or use a naive forecast.
-                    # A simple approach: if features fail, predict no change from last_rate.
-                    pct_change = 0.0 
+                    logger.warning(f"Predicting no change (0.0% change) for forecast step {i+1} due to feature creation error.")
+                    pct_change = 0.0 # Default to no change if features cannot be generated
                 else:
                     # Select the features for the very last row of the processed slice
                     next_day_feature_values = next_day_features_df[self.feature_columns].iloc[-1:]

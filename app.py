@@ -159,7 +159,7 @@ def create_forecast_plot(historical_data, forecast_data, base_currency, target_c
 def main():
     st.set_page_config(page_title="Currency Forecaster", page_icon="📈", layout="wide")
     
-    st.title('📈 Currency Exchange Rate Forecaster')
+    st.title('📈 Exchange Rate Forecaster using LightGBM')
     
     try:
         # Get currency list

@@ -41,7 +41,7 @@ def retry_with_backoff(retries=3, backoff_in_seconds=1):
 
 class DataFetcher:
     def __init__(self, cache_ttl=3600):
-        """Initialize with cache time-to-live in seconds"""
+        """Initialize with cache ttl in seconds"""
         self.base_url = "https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@{date}/v1/{endpoint}"
         self.fallback_url = "https://{date}.currency-api.pages.dev/v1/{endpoint}"
         self.rates_dir = Path("rates")
@@ -94,7 +94,7 @@ class DataFetcher:
         return data
 
     def fetch_rates(self, base_currency, date=None):
-        """Fetch rates with smarter cache handling"""
+        """Fetch rates with cache handling"""
         if date is None:
             date = 'latest'
             
@@ -147,7 +147,7 @@ class DataFetcher:
                 return None
 
     def fetch_historical_rates(self, base_currency, days=14):
-        """Fetch historical rates with proper handling of non-trading days"""
+        """Fetch historical rates"""
         rates_data = []
         current_date = datetime.now()
         
@@ -178,17 +178,17 @@ if __name__ == "__main__":
     fetcher = DataFetcher()
     
     # Test fetch latest EUR rates
-    try:
-        latest_rates = fetcher.fetch_rates('eur')
-        if latest_rates:
-            logger.info("Successfully fetched latest EUR rates")
-    except Exception as e:
-        logger.error(f"Error fetching latest rates: {str(e)}")
+    # try:
+    #     latest_rates = fetcher.fetch_rates('eur')
+    #     if latest_rates:
+    #         logger.info("Successfully fetched latest EUR rates")
+    # except Exception as e:
+    #     logger.error(f"Error fetching latest rates: {str(e)}")
     
     # Test fetch historical USD rates
-    try:
-        historical_rates = fetcher.fetch_historical_rates('usd', days=7)
-        if historical_rates:
-            logger.info(f"Successfully fetched {len(historical_rates)} days of USD historical rates")
-    except Exception as e:
-        logger.error(f"Error fetching historical rates: {str(e)}")
+    # try:
+    #     historical_rates = fetcher.fetch_historical_rates('usd', days=7)
+    #     if historical_rates:
+    #         logger.info(f"Successfully fetched {len(historical_rates)} days of USD historical rates")
+    # except Exception as e:
+    #     logger.error(f"Error fetching historical rates: {str(e)}")
