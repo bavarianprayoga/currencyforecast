@@ -3,6 +3,12 @@ import plotly.graph_objects as go
 import pandas as pd
 from datetime import datetime, timedelta
 import logging
+import warnings
+
+# Suppress warnings
+warnings.filterwarnings("ignore", category=UserWarning, module="lightgbm")
+warnings.filterwarnings("ignore", category=FutureWarning, module="sklearn")
+
 from data_fetcher import DataFetcher
 from model import CurrencyForecaster
 import numpy as np
@@ -24,12 +30,12 @@ if 'error_message' not in st.session_state:
     st.session_state.error_message = None
 
 def format_value(num):
-    """Format numbers for display, handling large, small, and typical values."""
+    """Format numbers for display"""
     if pd.isna(num):
         return "N/A"
     
     abs_num = abs(num)
-    if abs_num == 0: # Handle zero explicitly
+    if abs_num == 0:
         return "0.00"
         
     if abs_num >= 1e6:
@@ -177,7 +183,7 @@ def main():
                 format_func=lambda x: currencies[x],
                 index=list(currencies.keys()).index('usd') if 'usd' in currencies else 0 # default to USD
             ).lower()
-
+            
         with col2:
             target_currency = st.selectbox(
                 'Target Currency',
@@ -220,7 +226,7 @@ def main():
                 fetcher = DataFetcher()
                 historical_rates_collected = []
                 dates_collected = []
-
+                
                 progress_bar = st.progress(0)
 
                 # Determine the end date for the historical period, the most recent date
@@ -231,7 +237,7 @@ def main():
                 for i in range(days):
                     progress = (i + 1) / days
                     progress_bar.progress(progress)
-
+                    
                     # Calculate the actual date to fetch, going backwards from end_date_dt
                     current_fetch_date_dt = end_date_dt - timedelta(days=i)
                     date_str_to_fetch = current_fetch_date_dt.strftime('%Y-%m-%d')
@@ -257,7 +263,7 @@ def main():
                 if not historical_rates_collected:
                     st.error("Failed to fetch sufficient historical data. Please check logs or try different parameters.", icon="❌")
                     return
-
+                    
                 # Create DataFrame from successfully fetched rates and their corresponding dates and ensure data is sorted by date
                 historical_data = pd.DataFrame(
                     {'rate': historical_rates_collected},
@@ -282,9 +288,182 @@ def main():
                 elif use_yesterday_data and latest_date_in_data.date() < yesterday_dt.date():
                     st.warning(f"Expected yesterday's data, but the most recent obtained is from {latest_date_in_data.strftime('%Y-%m-%d')}. Check data source or API status.", icon="⚠️")
 
+                # ========== EXPLORATORY DATA ANALYSIS (EDA) ==========
+                st.subheader('📊 Exploratory Data Analysis')
+                
+                # Calculate percentage changes for analysis
+                historical_data['pct_change'] = historical_data['rate'].pct_change()
+                
+                # Create tabs for different EDA sections
+                eda_tab1, eda_tab2, eda_tab3 = st.tabs(["Distribution Analysis", "Descriptive Statistics", "Volatility Analysis"])
+                
+                with eda_tab1:
+                    st.markdown("### Distribution Analysis")
+                    
+                    # Two columns for histograms
+                    hist_col1, hist_col2 = st.columns(2)
+                    
+                    with hist_col1:
+                        # Histogram of exchange rates
+                        fig_hist_rates = go.Figure()
+                        fig_hist_rates.add_trace(go.Histogram(
+                            x=historical_data['rate'],
+                            nbinsx=30, # Number of bins for the histogram
+                            name='Exchange Rates',
+                            marker_color='aqua'
+                        ))
+                        fig_hist_rates.update_layout(
+                            title=f'{base_currency.upper()}/{target_currency.upper()} Exchange Rate Distribution',
+                            xaxis_title='Exchange Rate',
+                            yaxis_title='Frequency',
+                            showlegend=False,
+                            height=400
+                        )
+                        st.plotly_chart(fig_hist_rates, use_container_width=True)
+                        
+                        # Interpretation
+                        st.caption("""
+                        This shows how often different exchange rate values occurred. 
+                        A narrow distribution suggests stable rates, while a wide distribution indicates high variability.
+                        """)
+                    
+                    with hist_col2:
+                        # Histogram of percentage changes
+                        fig_hist_pct = go.Figure()
+                        fig_hist_pct.add_trace(go.Histogram(
+                            x=historical_data['pct_change'].dropna(),
+                            nbinsx=30,
+                            name='Daily % Changes',
+                            marker_color='red'
+                        ))
+                        fig_hist_pct.update_layout(
+                            title='Daily Percentage Change Distribution',
+                            xaxis_title='Daily % Change',
+                            yaxis_title='Frequency',
+                            showlegend=False,
+                            height=400
+                        )
+                        st.plotly_chart(fig_hist_pct, use_container_width=True)
+                        
+                        # Interpretation
+                        st.caption("""
+                        This shows the distribution of daily percentage changes. 
+                        A bell-shaped curve centered at 0 suggests random walk behavior. 
+                        Fat tails indicate occasional large movements (high risk).
+                        """)
+                
+                with eda_tab2:
+                    st.markdown("### Descriptive Statistics")
+                    
+                    # Calculate comprehensive statistics
+                    stats_col1, stats_col2 = st.columns(2)
+                    
+                    with stats_col1:
+                        st.markdown("**Exchange Rate Statistics**")
+                        rate_stats = {
+                            'Count': len(historical_data),
+                            'Mean': historical_data['rate'].mean(),
+                            'Std Dev': historical_data['rate'].std(),
+                            'Min': historical_data['rate'].min(),
+                            '25%': historical_data['rate'].quantile(0.25),
+                            'Median': historical_data['rate'].quantile(0.50),
+                            '75%': historical_data['rate'].quantile(0.75),
+                            'Max': historical_data['rate'].max(),
+                            'Skewness': historical_data['rate'].skew(),
+                            'Kurtosis': historical_data['rate'].kurtosis()
+                        }
+                        
+                        # Format the statistics for display
+                        stats_df = pd.DataFrame(rate_stats.items(), columns=['Metric', 'Value'])
+                        st.dataframe(stats_df, hide_index=True, use_container_width=True)
+                    
+                    with stats_col2:
+                        st.markdown("**Daily % Change Statistics**")
+                        pct_stats = {
+                            'Count': len(historical_data['pct_change'].dropna()),
+                            'Mean (%)': historical_data['pct_change'].mean() * 100,
+                            'Std Dev (%)': historical_data['pct_change'].std() * 100,
+                            'Min (%)': historical_data['pct_change'].min() * 100,
+                            '25% (%)': historical_data['pct_change'].quantile(0.25) * 100,
+                            'Median (%)': historical_data['pct_change'].quantile(0.50) * 100,
+                            '75% (%)': historical_data['pct_change'].quantile(0.75) * 100,
+                            'Max (%)': historical_data['pct_change'].max() * 100,
+                            'Skewness': historical_data['pct_change'].skew(),
+                            'Kurtosis': historical_data['pct_change'].kurtosis()
+                        }
+                        
+                        pct_stats_df = pd.DataFrame(pct_stats.items(), columns=['Metric', 'Value'])
+                        st.dataframe(pct_stats_df, hide_index=True, use_container_width=True)
+                
+                with eda_tab3:
+                    st.markdown("### Volatility Analysis")
+                    
+                    # Calculate rolling volatility (same window as used in model)
+                    volatility_window = 30  # Same as model's volatility_lookback
+                    historical_data['rolling_volatility'] = historical_data['pct_change'].rolling(
+                        window=volatility_window, min_periods=1
+                    ).std()
+
+                    fig_volatility = go.Figure()
+
+                    fig_volatility.add_trace(go.Scatter(
+                        x=historical_data.index,
+                        y=historical_data['rolling_volatility'] * 100,
+                        name=f'{volatility_window}-Day Rolling Volatility',
+                        line=dict(color='purple', width=2)
+                    ))
+                    
+                    # Add average volatility line
+                    avg_volatility = historical_data['rolling_volatility'].mean() * 100
+                    fig_volatility.add_hline(
+                        y=avg_volatility, 
+                        line_dash="dash", 
+                        line_color="gray",
+                        annotation_text=f"Average: {avg_volatility:.2f}%"
+                    )
+                    
+                    fig_volatility.update_layout(
+                        title=f'{volatility_window}-Day Rolling Volatility',
+                        xaxis_title='Date',
+                        yaxis_title='Volatility (%)',
+                        hovermode='x unified',
+                        height=400
+                    )
+                    
+                    st.plotly_chart(fig_volatility, use_container_width=True)
+                    
+                    # Current volatility metric
+                    current_volatility = historical_data['rolling_volatility'].iloc[-1] * 100
+                    volatility_percentile = (historical_data['rolling_volatility'] <= historical_data['rolling_volatility'].iloc[-1]).mean() * 100
+                    # creates boolean array of all values less than or equal to the current volatility
+                    
+                    vol_col1, vol_col2, vol_col3 = st.columns(3)
+                    with vol_col1:
+                        st.metric(
+                            "Current Volatility",
+                            f"{current_volatility:.2f}%",
+                            f"{current_volatility - avg_volatility:.2f}% vs avg"
+                        )
+                    with vol_col2:
+                        st.metric(
+                            "Average Volatility",
+                            f"{avg_volatility:.2f}%"
+                        )
+                    with vol_col3:
+                        st.metric(
+                            "Volatility Percentile",
+                            f"{volatility_percentile:.2f}%",
+                            help="Current volatility is higher than this % of historical values"
+                        )
+                
+                # Clean up temporary column
+                historical_data = historical_data.drop(columns=['pct_change', 'rolling_volatility'])
+                
                 # Train model and generate forecast
                 forecaster = CurrencyForecaster()
                 forecaster.fit(historical_data)
+                
+                # Generate forecast
                 forecast = forecaster.predict(historical_data, forecast_days=forecast_days)
                 
                 # Create forecast DataFrame
@@ -333,20 +512,20 @@ def main():
                 pct_changes = (forecast - current_rate) / current_rate * 100
                 
                 # Display forecasts with context
-                col1, col2, col3 = st.columns(3)
-                with col1:
+                result_col1, result_col2, result_col3 = st.columns(3)
+                with result_col1:
                     st.metric(
                         "Tomorrow",
                         f"{format_value(forecast_to_display[0])}",
                         f"{pct_changes[0]:.2f}%"
                     )
-                with col2:
+                with result_col2:
                     st.metric(
                         "3 Days",
                         f"{format_value(forecast_to_display[min(2, len(forecast_to_display)-1)])}",
                         f"{pct_changes[min(2, len(forecast_to_display)-1)]:.2f}%"
                     )
-                with col3:
+                with result_col3:
                     st.metric(
                         "End of Forecast",
                         f"{format_value(forecast_to_display[-1])}",
@@ -366,20 +545,191 @@ def main():
                 
                 # Add summary statistics
                 with st.expander("📊 Additional Statistics"):
-                    col1, col2 = st.columns(2)
-                    with col1:
+                    summary_col1, summary_col2 = st.columns(2)
+                    with summary_col1:
                         st.write("Historical Statistics (original scale):")
                         st.write(f"- Average Rate: {format_value(historical_data['rate'].mean())}")
                         st.write(f"- Volatility: {historical_data['rate'].pct_change().std()*100:.2f}%")
                         
-                    with col2:
+                    with summary_col2:
                         st.write("Forecast Statistics (original scale):")
                         st.write(f"- Average Forecast: {format_value(forecast.mean())}")
                         st.write(f"- Forecast Range: {format_value(forecast.min())} - {format_value(forecast.max())}")
-                
+            
                 # Add warning for volatile pairs
                 if historical_data['rate'].pct_change().std() > 0.02:  # More than 2% daily volatility
                     st.warning("This currency pair shows high volatility. Forecasts may be less reliable.", icon="⚠️")
+
+                # ========== MODEL EVALUATION ==========
+                st.subheader('🎯 Model Evaluation')
+                
+                evaluation_results = forecaster.evaluate(historical_data, test_size=0.2)
+                
+                if evaluation_results:
+                    eval_tab1, eval_tab2, eval_tab3 = st.tabs(["Cross-Validation Results", "Test Set Metrics", "Prediction vs Actual"])
+                    
+                    with eval_tab1:
+                        st.markdown("### Cross-Validation Results")
+
+                        # Best CV Scores and params
+                        st.metric(
+                            "Best CV Score (Neg MSE)",
+                            f"{forecaster.best_score_:.6f}",
+                            help="Negative Mean Squared Error on percentage changes"
+                        )
+                        st.markdown("**Best Parameters:**")
+                        for param, value in forecaster.best_params_.items():
+                            st.write(f"- {param}: {value}")
+
+
+                        cv_scores = []
+                        for i in range(len(forecaster.cv_results_['params'])):
+                            cv_scores.append({
+                                'Parameters': str(forecaster.cv_results_['params'][i]),
+                                'Mean CV Score': forecaster.cv_results_['mean_test_score'][i],
+                                'Std CV Score': forecaster.cv_results_['std_test_score'][i]
+                            })
+                        cv_df = pd.DataFrame(cv_scores)
+                        cv_df = cv_df.sort_values('Mean CV Score', ascending=False)
+                        st.markdown("**Top 5 CV Results:**")
+                        st.dataframe(
+                            cv_df.head(), 
+                            hide_index=True, 
+                            use_container_width=True,     
+                            column_config={
+                                "Mean CV Score": st.column_config.NumberColumn(
+                                    format="scientific"
+                                ),
+                                "Std CV Score": st.column_config.NumberColumn(
+                                    format="scientific"
+                                )
+                            }
+                        )
+                    
+                    with eval_tab2:
+                        st.markdown("### Hold-Out Test Set Metrics")
+                        st.info(f"""
+                        The model was evaluated on the last {evaluation_results['test_size']} days ({evaluation_results['test_size']/len(historical_data)*100:.1f}%) 
+                        of data that were not used during training.
+                        """)
+                        
+                        metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
+                        
+                        with metric_col1:
+                            st.metric(
+                                "MAE",
+                                f"{evaluation_results['mae']:.6f}",
+                                help="Mean Absolute Error of percentage changes"
+                            )
+                        
+                        with metric_col2:
+                            st.metric(
+                                "RMSE", 
+                                f"{evaluation_results['rmse']:.6f}",
+                                help="Root Mean Square Error of percentage changes"
+                            )
+                        
+                        with metric_col3:
+                            st.metric(
+                                "MAPE (%)",
+                                f"{evaluation_results['mape']:.2f}%" if not pd.isna(evaluation_results['mape']) else "N/A",
+                                help="Mean Absolute Percentage Error"
+                            )
+                        
+                        with metric_col4:
+                            st.metric(
+                                "Directional Accuracy (%)",
+                                f"{evaluation_results['directional_accuracy']:.1f}%",
+                                help="Percentage of times the model correctly predicted whether the rate would go up or down"
+                            )
+                        
+                        # Interpretation guide
+                        st.markdown("""
+                        **📊 Metrics Interpretation:**
+                        - **MAE & RMSE**: Lower is better. These measure the average prediction error in percentage change units.
+                        - **MAPE**: Shows the average percentage error.
+                        - **Directional Accuracy**: > 50% means the model predicts the direction (up/down) better than random guessing.
+                        """)
+                    
+                    with eval_tab3:
+                        st.markdown("### Prediction vs Actual on Test Set")
+                        
+                        test_dates = evaluation_results['test_dates']
+                        y_test = evaluation_results['y_test'] * 100
+                        y_pred = evaluation_results['y_pred'] * 100
+                        
+                        fig_comparison = go.Figure()
+                        
+                        fig_comparison.add_trace(go.Scatter(
+                            x=test_dates,
+                            y=y_test,
+                            name='Actual %',
+                            line=dict(color='blue', width=2),
+                            mode='lines+markers'
+                        ))
+                        
+                        fig_comparison.add_trace(go.Scatter(
+                            x=test_dates,
+                            y=y_pred,
+                            name='Predicted %',
+                            line=dict(color='red', width=2, dash='dash'),
+                            mode='lines+markers'
+                        ))
+                        
+                        # Add zero line
+                        fig_comparison.add_hline(y=0, line_dash="dash", line_color="gray", opacity=0.5)
+                        
+                        fig_comparison.update_layout(
+                            title='Predicted vs Actual Daily Percentage Changes (Test Set)',
+                            xaxis_title='Date',
+                            yaxis_title='Daily % Change',
+                            hovermode='x unified',
+                            height=400
+                        )
+                        
+                        st.plotly_chart(fig_comparison, use_container_width=True)
+                        
+                        # Residual analysis
+                        residuals = y_test - y_pred
+                        
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            # Residual distribution
+                            fig_residuals = go.Figure()
+                            fig_residuals.add_trace(go.Histogram(
+                                x=residuals,
+                                nbinsx=20,
+                                name='Prediction Errors',
+                                marker_color='purple'
+                            ))
+                            fig_residuals.update_layout(
+                                title='Distribution of Prediction Errors',
+                                xaxis_title='Error (Actual - Predicted %)',
+                                yaxis_title='Frequency',
+                                height=300
+                            )
+                            st.plotly_chart(fig_residuals, use_container_width=True)
+                        
+                        with col2:
+                            # Error statistics
+                            st.markdown("**Error Analysis:**")
+                            error_stats = {
+                                'Mean Error': f"{residuals.mean():.4f}%",
+                                'Std Error': f"{residuals.std():.4f}%", 
+                                'Max Overestimate': f"{residuals.min():.4f}%",
+                                'Max Underestimate': f"{residuals.max():.4f}%"
+                            }
+                            for metric, value in error_stats.items():
+                                st.write(f"- {metric}: {value}")
+                            
+                            if abs(residuals.mean()) < 0.01:
+                                st.success("✅ Model shows no significant bias (mean error near zero)")
+                            else:
+                                direction = "overestimates" if residuals.mean() < 0 else "underestimates"
+                                st.warning(f"⚠️ Model slightly {direction} on average")
+                
+                else:
+                    st.warning("Unable to perform evaluation - insufficient data for test set.")
                 
     except Exception as e:
         logger.error(f"Application error: {str(e)}")
