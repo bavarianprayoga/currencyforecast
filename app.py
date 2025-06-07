@@ -456,6 +456,7 @@ def main():
                             help="Current volatility is higher than this % of historical values"
                         )
                 
+                # ========== MODEL TRAINING & FORECAST ==========
                 # Clean up temporary column
                 historical_data = historical_data.drop(columns=['pct_change', 'rolling_volatility'])
                 
@@ -612,43 +613,60 @@ def main():
                         The model was evaluated on the last {evaluation_results['test_size']} days ({evaluation_results['test_size']/len(historical_data)*100:.1f}%) 
                         of data that were not used during training.
                         """)
+
+                        row1_col1, row1_col2, row1_col3 = st.columns(3)
+                        row2_col1, row2_col2, row2_col3 = st.columns(3)
                         
-                        metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
-                        
-                        with metric_col1:
+                        with row1_col1:
                             st.metric(
                                 "MAE",
                                 f"{evaluation_results['mae']:.6f}",
-                                help="Mean Absolute Error of percentage changes"
+                                help="Mean Absolute Error of percentage changes. Lower is better."
                             )
                         
-                        with metric_col2:
+                        with row1_col2:
                             st.metric(
                                 "RMSE", 
                                 f"{evaluation_results['rmse']:.6f}",
-                                help="Root Mean Square Error of percentage changes"
+                                help="Root Mean Square Error of percentage changes."
                             )
                         
-                        with metric_col3:
-                            st.metric(
-                                "MAPE (%)",
-                                f"{evaluation_results['mape']:.2f}%" if not pd.isna(evaluation_results['mape']) else "N/A",
-                                help="Mean Absolute Percentage Error"
-                            )
-                        
-                        with metric_col4:
+                        with row1_col3:
                             st.metric(
                                 "Directional Accuracy (%)",
                                 f"{evaluation_results['directional_accuracy']:.1f}%",
-                                help="Percentage of times the model correctly predicted whether the rate would go up or down"
+                                help="Percentage of times the model correctly predicted whether the rate would go up or down."
                             )
                         
+                        with row2_col1:
+                            st.metric(
+                                "MAPE (%)",
+                                f"{evaluation_results['mape']:.2f}%" if not pd.isna(evaluation_results['mape']) else "N/A",
+                                help="Mean Absolute Percentage Error."
+                            )
+
+                        with row2_col2:
+                            st.metric(
+                                "sMAPE (%)",
+                                f"{evaluation_results['smape']:.2f}%" if not pd.isna(evaluation_results['smape']) else "N/A",
+                                help="Symmetric MAPE."
+                            )
+                        
+                        with row2_col3:
+                            st.metric(
+                                "MASE",
+                                f"{evaluation_results['mase']:.2f}" if not pd.isna(evaluation_results['mase']) else "N/A",
+                                help="Mean Absolute Scaled Error. < 1 means the model is better than a naive forecast."
+                            )
+
                         # Interpretation guide
                         st.markdown("""
                         **📊 Metrics Interpretation:**
                         - **MAE & RMSE**: Lower is better. These measure the average prediction error in percentage change units.
-                        - **MAPE**: Shows the average percentage error.
                         - **Directional Accuracy**: > 50% means the model predicts the direction (up/down) better than random guessing.
+                        - **MAPE**: Shows the average percentage error.
+                        - **sMAPE**: A percentage error metric that is more reliable than MAPE. Lower is better.
+                        - **MASE**: Compares the model to a naive forecast. A value < 1 is good, indicating the model is outperforming the baseline.
                         """)
                     
                     with eval_tab3:

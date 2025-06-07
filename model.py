@@ -109,17 +109,17 @@ class CurrencyForecaster:
                 logger.warning(f"Very few samples ({len(X)}) available for training.")
                 self.pipeline = Pipeline([
                     ('scaler', StandardScaler()),
-                                    ('model', LGBMRegressor(
-                    n_estimators=100,
-                    learning_rate=0.05,
-                    max_depth=3,
-                    num_leaves=15,
-                    min_child_samples=3,
-                    colsample_bytree=0.8,
-                    subsample=0.8,
-                    random_state=42,
-                    verbose=-1
-                ))
+                    ('model', LGBMRegressor(
+                        n_estimators=100,
+                        learning_rate=0.05,
+                        max_depth=3,
+                        num_leaves=15,
+                        min_child_samples=3,
+                        colsample_bytree=0.8,
+                        subsample=0.8,
+                        random_state=42,
+                        verbose=-1
+                    ))
                 ])
                 self.pipeline.fit(X, y)
                 
@@ -150,9 +150,9 @@ class CurrencyForecaster:
             
             # Define parameter grid
             param_grid = {
-                'model__n_estimators': [50, 100],
+                'model__n_estimators': [50, 100, 150, 200],
                 'model__learning_rate': [0.05, 0.1],
-                'model__max_depth': [3, 4, 5, 7]
+                'model__max_depth': [3, 5, 7, 9]
             }
             
             # Setup GridSearchCV
@@ -264,9 +264,8 @@ class CurrencyForecaster:
             
             # Split into train and test
             split_index = int(len(X) * (1 - test_size))
-            X_train = X[:split_index]
-            X_test = X[split_index:]
-            y_test = y[split_index:]
+            X_train, y_train = X[:split_index], y[:split_index]
+            X_test, y_test = X[split_index:], y[split_index:]
             
             if len(X_test) < 1:
                 logger.warning("Test set too small for evaluation.")
@@ -286,6 +285,24 @@ class CurrencyForecaster:
             else:
                 mape = np.nan
             
+            # sMAPE calculation (more robust for values close to zero)
+            denominator = np.abs(y_test) + np.abs(y_pred)
+            smape_mask = denominator != 0
+            if smape_mask.sum() > 0:
+                smape = np.mean(2 * np.abs(y_pred[smape_mask] - y_test[smape_mask]) / denominator[smape_mask]) * 100
+            else:
+                smape = np.nan
+
+            # MASE calculation
+            if len(y_train) > 1:
+                naive_forecast_errors = np.abs(y_train.diff().dropna())
+                if naive_forecast_errors.mean() > 0:
+                    mase = mae / naive_forecast_errors.mean()
+                else:
+                    mase = np.inf # Cannot scale if naive error is zero
+            else:
+                mase = np.nan
+
             # Directional Accuracy
             directional_accuracy = ((y_test * y_pred) > 0).mean() * 100
             
@@ -301,6 +318,8 @@ class CurrencyForecaster:
                 'mae': mae,
                 'rmse': rmse,
                 'mape': mape,
+                'smape': smape,
+                'mase': mase,
                 'directional_accuracy': directional_accuracy,
                 'no_change_accuracy': no_change_accuracy,
                 'test_size': len(X_test),
@@ -311,7 +330,8 @@ class CurrencyForecaster:
             }
             
             logger.info(f"Evaluation completed. MAE: {mae:.6f}, RMSE: {rmse:.6f}, "
-                        f"MAPE: {mape:.2f}%, Directional Accuracy: {directional_accuracy:.2f}%")
+                        f"MAPE: {mape:.2f}%, sMAPE: {smape:.2f}%, MASE: {mase:.2f},"
+                        f"Directional Accuracy: {directional_accuracy:.2f}%")
             
             return evaluation_results
             

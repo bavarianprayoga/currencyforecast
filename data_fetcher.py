@@ -58,7 +58,6 @@ class DataFetcher:
         if not cache_file.exists():
             return False
             
-        # Historical data never expires
         if date != 'latest':
             return True
             
