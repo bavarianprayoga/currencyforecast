@@ -171,23 +171,3 @@ class DataFetcher:
             logger.warning(f"Only found {len(rates_data)} trading days out of {days} requested")
             
         return rates_data
-
-# Example usage
-if __name__ == "__main__":
-    fetcher = DataFetcher()
-    
-    # Test fetch latest EUR rates
-    # try:
-    #     latest_rates = fetcher.fetch_rates('eur')
-    #     if latest_rates:
-    #         logger.info("Successfully fetched latest EUR rates")
-    # except Exception as e:
-    #     logger.error(f"Error fetching latest rates: {str(e)}")
-    
-    # Test fetch historical USD rates
-    # try:
-    #     historical_rates = fetcher.fetch_historical_rates('usd', days=7)
-    #     if historical_rates:
-    #         logger.info(f"Successfully fetched {len(historical_rates)} days of USD historical rates")
-    # except Exception as e:
-    #     logger.error(f"Error fetching historical rates: {str(e)}")

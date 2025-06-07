@@ -57,8 +57,6 @@ def get_currency_list():
     """Fetch and cache currency list"""
     try:
         # Fetch currency list and names
-        fetcher = DataFetcher()
-
         # CDN URL
         response = requests.get("https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies.min.json")
         if response.status_code == 200:

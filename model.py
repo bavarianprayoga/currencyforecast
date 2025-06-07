@@ -42,7 +42,7 @@ class CurrencyForecaster:
         return pd.DataFrame({
             'day_sin': np.sin(day_rad),
             'day_cos': np.cos(day_rad)
-        }, index=df.index)
+            }, index=df.index)
         
     def _create_features(self, df):
         """Create simple, robust features using percentage changes"""
@@ -62,9 +62,12 @@ class CurrencyForecaster:
                 
             # Volatility features
             features['volatility'] = features['pct_change'].rolling(
-                window=self.volatility_lookback,
-                min_periods=1
-            ).std()
+                                        window=self.volatility_lookback,
+                                        min_periods=1
+                                    ).std()
+
+            # Add exponential moving average
+            features['ema'] = df['rate'].ewm(span=self.volatility_lookback, adjust=False).mean()
             
             # Add cyclic time features
             cyclic_features = self._create_cyclic_features(df)
@@ -105,7 +108,7 @@ class CurrencyForecaster:
             self.feature_columns = X.columns
             
             if len(X) < 10:
-                # Fallback to simple model fitting if too few samples
+                # Fallback to simple model fitting if too few samples, skipping CV
                 logger.warning(f"Very few samples ({len(X)}) available for training.")
                 self.pipeline = Pipeline([
                     ('scaler', StandardScaler()),
@@ -133,7 +136,7 @@ class CurrencyForecaster:
             
             # Create pipeline
             self.pipeline = Pipeline([
-                ('scaler', StandardScaler()),  # Standardize features
+                ('scaler', StandardScaler()),
                 ('model', LGBMRegressor(
                     num_leaves=15,
                     min_child_samples=3,
