@@ -306,14 +306,6 @@ class CurrencyForecaster:
             # Directional Accuracy
             directional_accuracy = ((y_test * y_pred) > 0).mean() * 100
             
-            # No change accuracy
-            threshold = 0.0001
-            no_change_mask = np.abs(y_test) < threshold
-            if no_change_mask.sum() > 0:
-                no_change_accuracy = (np.abs(y_pred[no_change_mask]) < threshold).mean() * 100
-            else:
-                no_change_accuracy = np.nan
-            
             evaluation_results = {
                 'mae': mae,
                 'rmse': rmse,
@@ -321,9 +313,8 @@ class CurrencyForecaster:
                 'smape': smape,
                 'mase': mase,
                 'directional_accuracy': directional_accuracy,
-                'no_change_accuracy': no_change_accuracy,
                 'test_size': len(X_test),
-                'train_size': len(X_train),
+                'train_size': len(y_train),
                 'y_test': y_test,
                 'y_pred': y_pred,
                 'test_dates': X_test.index

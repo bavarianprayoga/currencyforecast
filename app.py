@@ -565,8 +565,39 @@ def main():
                 st.subheader('🎯 Model Evaluation')
                 
                 evaluation_results = forecaster.evaluate(historical_data, test_size=0.2)
-                
+            
                 if evaluation_results:
+                    # START CSV SAVE ========================================================
+                    # try:
+                    #     log_df = pd.DataFrame({
+                    #         'run_timestamp': pd.Timestamp.now(),
+                    #         'base_currency': base_currency.upper(),
+                    #         'target_currency': target_currency.upper(),
+                    #         'historical_days_input': days,
+                    #         'forecast_days_input': forecast_days,
+                    #         'test_date': evaluation_results['test_dates'],
+                    #         'actual_pct_change': evaluation_results['y_test'],
+                    #         'predicted_pct_change': evaluation_results['y_pred'],
+                    #         'error': evaluation_results['y_test'] - evaluation_results['y_pred']
+                    #     })
+
+                    #     log_filename = "forecast_log.csv"
+                        
+                    #     # Append to CSV if it exists, otherwise create it
+                    #     try:
+                    #         existing_df = pd.read_csv(log_filename)
+                    #         combined_df = pd.concat([existing_df, log_df], ignore_index=True)
+                    #     except FileNotFoundError:
+                    #         combined_df = log_df
+
+                    #     combined_df.to_csv(log_filename, index=False)
+                    #     st.success(f"Evaluation results successfully appended to `{log_filename}`")
+
+                    # except Exception as e:
+                    #     st.error(f"Failed to save evaluation results to CSV: {str(e)}")
+
+                    # END CSV SAVE ========================================================
+
                     eval_tab1, eval_tab2, eval_tab3 = st.tabs(["Cross-Validation Results", "Test Set Metrics", "Prediction vs Actual"])
                     
                     with eval_tab1:
@@ -581,7 +612,6 @@ def main():
                         st.markdown("**Best Parameters:**")
                         for param, value in forecaster.best_params_.items():
                             st.write(f"- {param}: {value}")
-
 
                         cv_scores = []
                         for i in range(len(forecaster.cv_results_['params'])):
