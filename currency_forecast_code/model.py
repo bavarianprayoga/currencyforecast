@@ -25,7 +25,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 class CurrencyForecaster:
-    """Currency forecaster using LightGBM"""
+    """sklearn Pipeline-based currency forecaster using LightGBM"""
     
     def __init__(self):
         self.pipeline = None
@@ -84,9 +84,9 @@ class CurrencyForecaster:
             raise
             
     def fit(self, df):
-        """Fit model with walk-forward validation and hyperparameter tuning"""
+        """Fit model with walk-forward validation and hyperparameter tuning using sklearn Pipeline"""
         try:
-            logger.info("Starting model fitting...")
+            logger.info("Starting model fitting with sklearn Pipeline approach...")
             
             # Create features
             features = self._create_features(df)
